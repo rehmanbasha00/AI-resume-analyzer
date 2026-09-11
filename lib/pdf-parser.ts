@@ -1,12 +1,10 @@
-// Reads a PDF file in the browser and returns the plain text inside it.
-// We load pdfjs only when this function runs, not on page load.
+const PDF_JS_VERSION = "4.4.168";
+const PDF_JS_URL = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDF_JS_VERSION}/pdf.min.mjs`;
+const PDF_WORKER_URL = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDF_JS_VERSION}/pdf.worker.min.mjs`;
 
 export async function extractTextFromPdf(file: File): Promise<string> {
-  const pdfjsLib = await import("pdfjs-dist");
-  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/build/pdf.worker.min.mjs",
-    import.meta.url
-  ).toString();
+  const pdfjsLib: any = await import(/* webpackIgnore: true */ PDF_JS_URL);
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_URL;
 
   const buffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
