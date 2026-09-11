@@ -1,77 +1,25 @@
-// These functions run in the browser and let the user download
-// the resume text as a PDF file or a Word (.doc) file.
+// Reads a PDF file in the browser and returns the plain text inside it.
+// We load pdfjs only when this function runs, not on page load.
+// The worker file is loaded from a CDN link instead of being bundled,
+// this avoids a build error on Vercel.
 
-import jsPDF from "jspdf";
+export async function extractTextFromPdf(file: File): Promise<string> {
+  const pdfjsLib = await import("pdfjs-dist");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
-// jsPDF's default font can't draw special characters properly
-// (long dashes, bullets, smart quotes). This swaps them for
-// plain characters so the PDF text stays clean.
-function sanitizeForPdf(text: string): string {
-  return text
-    .replace(/[\u2013\u2014]/g, "-")   // en dash, em dash
-    .replace(/[\u2018\u2019]/g, "'")   // smart single quotes
-    .replace(/[\u201C\u201D]/g, '"')   // smart double quotes
-    .replace(/\u2022/g, "-")           // bullet point
-    .replace(/\u2026/g, "...")         // ellipsis
-    .replace(/\u00A0/g, " ");          // non-breaking space
-}
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
 
+  let fullText = "";
 
-export function downloadResumePdf(text: string, filename = "resume.pdf") {
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      .map((item: any) => item.str)
+      .join(" ");
+    fullText += pageText + "\n\n";
+  }
 
-  const marginX = 40;
-  const marginY = 50;
-  const maxWidth = 515;
-  const lineHeight = 14;
-  const pageHeight = 842;
-
-  doc.setFont("helvetica");
-  doc.setFontSize(11);
-
-  const lines = doc.splitTextToSize(text, maxWidth);
-  let y = marginY;
-
-  lines.forEach((line: string) => {
-    if (y > pageHeight - marginY) {
-      doc.addPage();
-      y = marginY;
-    }
-    doc.text(line, marginX, y);
-    y += lineHeight;
-  });
-
-  doc.save(filename);
-}
-
-export function downloadResumeDoc(text: string, filename = "resume.doc") {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  const paragraphs = escaped
-    .split("\n")
-    .map((line) => `<p style="margin:0;">${line || "&nbsp;"}</p>`)
-    .join("");
-
-  const html = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office"
-          xmlns:w="urn:schemas-microsoft-com:office:word"
-          xmlns="http://www.w3.org/TR/REC-html40">
-    <head><meta charset="utf-8"></head>
-    <body style="font-family: Calibri, Arial, sans-serif; font-size: 11pt;">
-      ${paragraphs}
-    </body>
-    </html>`;
-
-  const blob = new Blob(["\ufeff", html], { type: "application/msword" });
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-
-  URL.revokeObjectURL(url);
+  return fullText.trim();
 }
